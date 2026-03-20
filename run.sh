@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════
-# run.sh — Run TriConnect locally (signaling server + Tauri app)
+# run.sh — Run TriConnect locally (signaling server + Tauri app))
 # ══════════════════════════════════════════════════════════════
 set -e
 
