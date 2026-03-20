@@ -29,12 +29,12 @@ echo -e "${CYAN}║     TriConnect — GCP Auto-Provisioner        ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
 
 # 1. Firewall rules
-log "Checking firewall rules for Port 8080..."
-if ! gcloud compute firewall-rules describe allow-triconnect-8080; then
-    gcloud compute firewall-rules create allow-triconnect-8080 \
-        --allow tcp:8080 \
+log "Checking firewall rules for ports 80, 443, 8080..."
+if ! gcloud compute firewall-rules describe allow-triconnect-secure >/dev/null 2>&1; then
+    gcloud compute firewall-rules create allow-triconnect-secure \
+        --allow tcp:80,tcp:443,tcp:8080 \
         --target-tags triconnect-node \
-        --description "Allow inbound WebSocket traffic on port 8080"
+        --description "Allow inbound HTTP/HTTPS and WebSocket traffic"
     ok "Firewall rule created."
 else
     ok "Firewall rule already exists."
@@ -57,6 +57,11 @@ fi
 # Need to wait briefly if VM was literally just created so SSH service is ready
 log "Waiting 15 seconds for SSH to initialize on the new server..."
 sleep 15
+
+# Fetch External IP to calculate dynamic sslip.io domain
+log "Fetching external IP for dynamic SSL Domain..."
+EXT_IP=$(gcloud compute instances describe $INSTANCE_NAME --zone=$ZONE --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+DOMAIN="${EXT_IP}.sslip.io"
 
 # 3. Code Transfer
 log "Securely transferring signaling server code..."
@@ -82,6 +87,24 @@ gcloud compute ssh $INSTANCE_NAME --zone=$ZONE --command="
         sudo npm install -g pm2
     fi
     
+    # Install Caddy for automatic SSL
+    if ! command -v caddy >/dev/null 2>&1; then
+        echo 'Installing Caddy for Automatic SSL...'
+        sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+        sudo apt-get update
+        sudo apt-get install caddy -y
+    fi
+    
+    echo "Configuring Caddy with ${DOMAIN}..."
+    cat <<EOF | sudo tee /etc/caddy/Caddyfile
+${DOMAIN} {
+    reverse_proxy localhost:8080
+}
+EOF
+    sudo systemctl restart caddy
+    
     cd ~/signaling-server
     npm install --production
     
@@ -92,12 +115,9 @@ gcloud compute ssh $INSTANCE_NAME --zone=$ZONE --command="
 "
 ok "Server successfully booted!"
 
-# 5. Fetch External IP
-EXT_IP=$(gcloud compute instances describe $INSTANCE_NAME --zone=$ZONE --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
-
 echo ""
 echo -e "${GREEN}══════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  GCP Deployment Complete! 🎉${NC}"
-echo -e "${GREEN}  Update your src/js/app.js to connect to:${NC}"
-echo -e "${GREEN}  ws://${EXT_IP}:8080${NC}"
+echo -e "${GREEN}  GCP Deployment Complete with Automatic SSL! 🎉${NC}"
+echo -e "${GREEN}  Update your src/js/env.js to connect to:${NC}"
+echo -e "${GREEN}  wss://${DOMAIN}${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════${NC}"
