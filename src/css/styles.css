@@ -402,8 +402,8 @@ html, body {
 }
 
 .peer-dot {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: var(--radius-round);
   background: var(--bg-elevated);
   border: 2px solid var(--text-muted);
@@ -413,11 +413,22 @@ html, body {
   transition: var(--transition);
   position: relative;
   cursor: default;
+  font-size: 1.2rem;
 }
 .peer-dot .peer-label {
+  position: absolute;
+  top: 100%;
+  margin-top: 6px;
+  white-space: nowrap;
   font-size: 0.65rem;
   font-weight: 600;
   color: var(--text-muted);
+  background: var(--bg-elevated);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  z-index: 10;
 }
 
 .peer-dot.connected {
@@ -426,6 +437,7 @@ html, body {
 }
 .peer-dot.connected .peer-label {
   color: var(--success);
+  border-color: rgba(16, 185, 129, 0.2);
 }
 
 .peer-dot.self {
@@ -434,6 +446,18 @@ html, body {
 }
 .peer-dot.self .peer-label {
   color: var(--accent);
+  border-color: var(--accent-glow);
+}
+
+/* Third wheeler distinct styling */
+.peer-dot.third-wheeler.connected,
+.peer-dot.third-wheeler.self {
+  border-color: var(--warning);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
+}
+.peer-dot.third-wheeler .peer-label {
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.2);
 }
 
 .peer-connector {

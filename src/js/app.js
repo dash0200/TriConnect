@@ -237,12 +237,19 @@
   function updatePeerIndicators() {
     const connectedPeers = WebRTCMesh.getConnectedPeerIds();
 
+    const getIcon = (id) => (id === 0 || id === 1) ? "💖" : "🤡";
+    const getLabel = (id, isSelf) => {
+      if (id === 0 || id === 1) return isSelf ? "You (Partner)" : "Partner";
+      return isSelf ? "You (3rd Wheel)" : "3rd Wheel";
+    };
+
     // Reset all
     for (let i = 0; i < 3; i++) {
       const dot = document.getElementById(`peer-dot-${i}`);
       if (!dot) continue;
       dot.className = "peer-dot";
-      dot.querySelector(".peer-label").textContent = "—";
+      dot.innerHTML = `<span class="peer-label">—</span>`;
+      dot.title = `Slot ${i}`;
     }
 
     // Mark self
@@ -250,7 +257,9 @@
       const selfDot = document.getElementById(`peer-dot-${myPeerId}`);
       if (selfDot) {
         selfDot.classList.add("self");
-        selfDot.querySelector(".peer-label").textContent = "You";
+        if (myPeerId === 2) selfDot.classList.add("third-wheeler");
+        selfDot.innerHTML = `${getIcon(myPeerId)}<span class="peer-label">${getLabel(myPeerId, true)}</span>`;
+        selfDot.title = getLabel(myPeerId, true);
       }
     }
 
@@ -259,7 +268,9 @@
       const dot = document.getElementById(`peer-dot-${peerId}`);
       if (dot) {
         dot.classList.add("connected");
-        dot.querySelector(".peer-label").textContent = `P${peerId}`;
+        if (peerId === 2) dot.classList.add("third-wheeler");
+        dot.innerHTML = `${getIcon(peerId)}<span class="peer-label">${getLabel(peerId, false)}</span>`;
+        dot.title = getLabel(peerId, false);
       }
     }
 
