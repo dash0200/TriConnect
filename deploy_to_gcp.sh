@@ -97,7 +97,7 @@ gcloud compute ssh $INSTANCE_NAME --zone=$ZONE --command="
         sudo apt-get install caddy -y
     fi
     
-    echo "Configuring Caddy with ${DOMAIN}..."
+    echo \"Configuring Caddy with ${DOMAIN}...\"
     cat <<EOF | sudo tee /etc/caddy/Caddyfile
 ${DOMAIN} {
     reverse_proxy localhost:8080
