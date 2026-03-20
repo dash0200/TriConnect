@@ -5,8 +5,6 @@
 
 window.VideoSync = (() => {
   const CHANNEL = "video-sync";
-  const DRIFT_THRESHOLD = 2.0; 
-  const HEARTBEAT_INTERVAL = 2000; 
 
   const STATE_PLAYING = 1;
   const STATE_PAUSED = 2;
@@ -18,7 +16,6 @@ window.VideoSync = (() => {
   let currentVideoType = null; // "youtube" | "html5"
   
   let isRemoteAction = false; 
-  let heartbeatTimer = null;
   let lastActionBy = null; 
 
   let localBuffering = false;
@@ -196,6 +193,9 @@ window.VideoSync = (() => {
     videoObj.addEventListener("waiting", () => handleInternalStateChange(STATE_BUFFERING));
     videoObj.addEventListener("playing", () => handleInternalStateChange(STATE_PLAYING));
     videoObj.addEventListener("ended", () => handleInternalStateChange(STATE_ENDED));
+    videoObj.addEventListener("seeked", () => {
+      if (!isRemoteAction) broadcastAction("seek", videoObj.currentTime);
+    });
 
     playerWrapper = {
       isReady: () => isReady,
@@ -227,7 +227,6 @@ window.VideoSync = (() => {
         localBuffering = false;
         wasPlayingBeforeBuffer = true;
         broadcastAction("play", playerWrapper.getCurrentTime());
-        startHeartbeat();
         updateSyncStatus("synced");
         break;
 
@@ -236,7 +235,6 @@ window.VideoSync = (() => {
             wasPlayingBeforeBuffer = false;
         }
         broadcastAction("pause", playerWrapper.getCurrentTime());
-        stopHeartbeat();
         updateSyncStatus("paused");
         break;
 
@@ -251,7 +249,6 @@ window.VideoSync = (() => {
 
       case STATE_ENDED:
         broadcastAction("pause", playerWrapper.getDuration());
-        stopHeartbeat();
         updateSyncStatus("ended");
         break;
     }
@@ -313,9 +310,6 @@ window.VideoSync = (() => {
       case "video-action":
         handleRemoteAction(peerId, msg);
         break;
-      case "video-heartbeat":
-        handleHeartbeat(peerId, msg);
-        break;
       case "video-buffering":
         peerBuffering.add(peerId);
         if (playerWrapper && playerWrapper.isReady()) {
@@ -360,7 +354,6 @@ window.VideoSync = (() => {
         if (!playerWrapper || !playerWrapper.isReady()) break;
         playerWrapper.seekTo(msg.time);
         playerWrapper.play();
-        startHeartbeat();
         updateSyncStatus("synced");
         break;
 
@@ -368,7 +361,6 @@ window.VideoSync = (() => {
         if (!playerWrapper || !playerWrapper.isReady()) break;
         playerWrapper.seekTo(msg.time);
         playerWrapper.pause();
-        stopHeartbeat();
         updateSyncStatus("paused");
         break;
 
@@ -381,50 +373,6 @@ window.VideoSync = (() => {
     setTimeout(() => {
       isRemoteAction = false;
     }, 300);
-  }
-
-  function handleHeartbeat(peerId, msg) {
-    if (!playerWrapper || !playerWrapper.isReady()) return;
-    if (playerWrapper.getState() !== STATE_PLAYING) return;
-
-    const localTime = playerWrapper.getCurrentTime();
-    const drift = Math.abs(localTime - msg.time);
-
-    if (drift > DRIFT_THRESHOLD) {
-      console.log(`[VideoSync] Drift correction: drift=${drift.toFixed(2)}s`);
-      isRemoteAction = true;
-      playerWrapper.seekTo(msg.time);
-      setTimeout(() => (isRemoteAction = false), 200);
-      updateSyncStatus("correcting");
-      setTimeout(() => updateSyncStatus("synced"), 1000);
-    }
-  }
-
-  function startHeartbeat() {
-    stopHeartbeat();
-    lastActionBy = lastActionBy || WebRTCMesh.getMyPeerId();
-
-    heartbeatTimer = setInterval(() => {
-      if (!playerWrapper || !playerWrapper.isReady()) return;
-      if (playerWrapper.getState() !== STATE_PLAYING) return;
-
-      if (lastActionBy !== WebRTCMesh.getMyPeerId()) return;
-
-      const msg = JSON.stringify({
-        type: "video-heartbeat",
-        time: playerWrapper.getCurrentTime(),
-        state: "playing",
-        sender: WebRTCMesh.getMyPeerId(),
-      });
-      WebRTCMesh.broadcast(CHANNEL, msg);
-    }, HEARTBEAT_INTERVAL);
-  }
-
-  function stopHeartbeat() {
-    if (heartbeatTimer) {
-      clearInterval(heartbeatTimer);
-      heartbeatTimer = null;
-    }
   }
 
   function updateSyncStatus(status) {
