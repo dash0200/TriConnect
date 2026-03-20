@@ -1,5 +1,5 @@
 # TriConnect
-
+https://dash0200.github.io/TriConnect/
 > **P2P mesh desktop app for exactly 3 users** — Chat, file sharing, and synchronized YouTube watching, all peer-to-peer.
 
 ![Topology](https://img.shields.io/badge/topology-triangle_mesh-blue)
