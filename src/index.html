@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TriConnect — P2P Mesh</title>
+  <meta name="description" content="Connect with 2 friends for peer-to-peer chat, file sharing, and synced video watching">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- ═══════════════════ LANDING VIEW ═══════════════════ -->
+  <div id="landing-view" class="view active">
+    <div class="landing-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 100 100" fill="none">
+            <circle cx="30" cy="70" r="12" stroke="url(#grad1)" stroke-width="3"/>
+            <circle cx="70" cy="70" r="12" stroke="url(#grad1)" stroke-width="3"/>
+            <circle cx="50" cy="25" r="12" stroke="url(#grad1)" stroke-width="3"/>
+            <line x1="30" y1="58" x2="50" y2="37" stroke="url(#grad2)" stroke-width="2" stroke-dasharray="4 3"/>
+            <line x1="70" y1="58" x2="50" y2="37" stroke="url(#grad2)" stroke-width="2" stroke-dasharray="4 3"/>
+            <line x1="42" y1="70" x2="58" y2="70" stroke="url(#grad2)" stroke-width="2" stroke-dasharray="4 3"/>
+            <defs>
+              <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#3b82f6"/>
+                <stop offset="100%" style="stop-color:#8b5cf6"/>
+              </linearGradient>
+              <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#3b82f680"/>
+                <stop offset="100%" style="stop-color:#8b5cf680"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h1>TriConnect</h1>
+        <p class="tagline">Peer-to-peer mesh for three</p>
+      </div>
+
+      <div class="landing-actions">
+        <button id="btn-create-room" class="btn btn-primary btn-lg">
+          <span class="btn-icon">＋</span>
+          Create Room
+        </button>
+
+        <div class="divider"><span>or</span></div>
+
+        <div class="join-form">
+          <input
+            type="text"
+            id="input-room-code"
+            class="input-field"
+            placeholder="Enter room code"
+            maxlength="6"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button id="btn-join-room" class="btn btn-secondary">Join</button>
+        </div>
+      </div>
+
+      <div id="landing-status" class="status-message hidden"></div>
+
+      <!-- Server URL config (collapsed by default) -->
+      <details class="server-config">
+        <summary>Server Settings</summary>
+        <div class="config-field">
+          <label for="input-server-url">Signaling Server URL</label>
+          <input
+            type="text"
+            id="input-server-url"
+            class="input-field input-sm"
+            value="ws://localhost:8080"
+          >
+        </div>
+      </details>
+    </div>
+
+    <!-- Animated background -->
+    <div class="bg-mesh">
+      <div class="mesh-dot dot-1"></div>
+      <div class="mesh-dot dot-2"></div>
+      <div class="mesh-dot dot-3"></div>
+      <div class="mesh-line line-1"></div>
+      <div class="mesh-line line-2"></div>
+      <div class="mesh-line line-3"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ MAIN APP VIEW ═══════════════════ -->
+  <div id="app-view" class="view">
+
+    <!-- Top bar -->
+    <header class="top-bar">
+      <div class="top-bar-left">
+        <span class="app-logo-sm">◺</span>
+        <span class="room-label">Room: <strong id="display-room-code">------</strong></span>
+        <button id="btn-copy-code" class="btn btn-ghost btn-xs" title="Copy room code">📋</button>
+      </div>
+      <div class="top-bar-center">
+        <div class="peer-indicators">
+          <div class="peer-dot" id="peer-dot-0" data-peer="0" title="You">
+            <span class="peer-label">You</span>
+          </div>
+          <div class="peer-connector" id="conn-0-1"></div>
+          <div class="peer-dot" id="peer-dot-1" data-peer="1" title="Peer 1">
+            <span class="peer-label">—</span>
+          </div>
+          <div class="peer-connector" id="conn-0-2"></div>
+          <div class="peer-dot" id="peer-dot-2" data-peer="2" title="Peer 2">
+            <span class="peer-label">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="top-bar-right">
+        <button id="btn-leave" class="btn btn-danger btn-sm">Leave</button>
+      </div>
+    </header>
+
+    <!-- Tab navigation -->
+    <nav class="tab-bar">
+      <button class="tab active" data-tab="chat" id="tab-chat">
+        <span class="tab-icon">💬</span> Chat
+        <span class="tab-badge hidden" id="chat-badge">0</span>
+      </button>
+      <button class="tab" data-tab="files" id="tab-files">
+        <span class="tab-icon">📁</span> Files
+      </button>
+      <button class="tab" data-tab="video" id="tab-video">
+        <span class="tab-icon">▶️</span> Watch Together
+      </button>
+    </nav>
+
+    <!-- Tab content -->
+    <main class="tab-content">
+
+      <!-- ── CHAT ── -->
+      <section class="panel active" id="panel-chat">
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-empty">
+            <span class="chat-empty-icon">💬</span>
+            <p>No messages yet. Say hello!</p>
+          </div>
+        </div>
+        <div class="chat-input-bar">
+          <input
+            type="text"
+            id="chat-input"
+            class="input-field"
+            placeholder="Type a message..."
+            autocomplete="off"
+          >
+          <button id="btn-send-chat" class="btn btn-primary">Send</button>
+        </div>
+      </section>
+
+      <!-- ── FILES ── -->
+      <section class="panel" id="panel-files">
+        <div class="files-toolbar">
+          <button id="btn-send-file" class="btn btn-primary">
+            <span class="btn-icon">📤</span> Send File
+          </button>
+          <div class="file-drop-hint">or drag &amp; drop a file here</div>
+        </div>
+        <div class="file-transfers" id="file-transfers">
+          <div class="files-empty">
+            <span class="files-empty-icon">📁</span>
+            <p>No transfers yet. Send or receive files peer-to-peer.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── VIDEO ── -->
+      <section class="panel" id="panel-video">
+        <div class="video-input-bar">
+          <input
+            type="text"
+            id="video-url-input"
+            class="input-field"
+            placeholder="Paste a YouTube URL..."
+            autocomplete="off"
+          >
+          <button id="btn-load-video" class="btn btn-primary">Load</button>
+        </div>
+        <div class="video-container">
+          <div id="youtube-player" class="youtube-player-placeholder">
+            <span class="video-placeholder-icon">▶️</span>
+            <p>Paste a YouTube URL above to start watching together</p>
+          </div>
+        </div>
+        <div class="video-controls">
+          <div class="video-sync-status" id="video-sync-status">
+            <span class="sync-dot"></span> Waiting for video...
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="js/ui.js"></script>
+  <script src="js/signaling.js"></script>
+  <script src="js/webrtc.js"></script>
+  <script src="js/chat.js"></script>
+  <script src="js/file-transfer.js"></script>
+  <script src="js/video-sync.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+</html>

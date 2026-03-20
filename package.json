@@ -1,0 +1,17 @@
+{
+  "name": "triconnect",
+  "version": "1.0.0",
+  "description": "> **P2P mesh desktop app for exactly 3 users** — Chat, file sharing, and synchronized YouTube watching, all peer-to-peer.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/cli": "^2.10.1"
+  }
+}
