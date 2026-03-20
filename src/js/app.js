@@ -23,6 +23,11 @@
 
   // ── Init ──
   function init() {
+    // Load environment variables if present
+    if (window.APP_ENV && window.APP_ENV.SIGNALING_URL) {
+      inputServerUrl.value = window.APP_ENV.SIGNALING_URL;
+    }
+
     // Initialize feature modules
     Chat.init();
     FileTransfer.init();
