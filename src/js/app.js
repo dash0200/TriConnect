@@ -7,6 +7,8 @@
   let appState = "disconnected"; // disconnected | connecting | in-room | connected
   let roomCode = null;
   let myPeerId = null;
+  let myDisplayName = "";
+  const peerNames = {}; // peerId → display name
 
   // ── DOM elements ──
   const landingView = document.getElementById("landing-view");
@@ -16,6 +18,7 @@
   const btnJoin = document.getElementById("btn-join-room");
   const inputRoomCode = document.getElementById("input-room-code");
   const inputServerUrl = document.getElementById("input-server-url");
+  const inputDisplayName = document.getElementById("input-display-name");
 
   const displayRoomCode = document.getElementById("display-room-code");
   const btnCopyCode = document.getElementById("btn-copy-code");
@@ -58,8 +61,37 @@
     // Wire up signaling events
     setupSignalingHandlers();
     setupWebRTCHandlers();
+    setupNameExchange();
 
     console.log("[App] TriConnect initialized");
+  }
+
+  // ── Name exchange over WebRTC ──
+  function setupNameExchange() {
+    // When a chat channel opens, announce our name
+    WebRTCMesh.on("channel-open", ({ peerId, channel }) => {
+      if (channel === "chat") {
+        const msg = JSON.stringify({
+          type: "name-announce",
+          name: myDisplayName,
+          sender: WebRTCMesh.getMyPeerId(),
+        });
+        WebRTCMesh.sendToPeer(peerId, "chat", msg);
+      }
+    });
+
+    // Listen for name announcements
+    WebRTCMesh.on("message", ({ peerId, channel, data }) => {
+      if (channel !== "chat") return;
+      try {
+        const msg = JSON.parse(data);
+        if (msg.type === "name-announce") {
+          peerNames[msg.sender] = msg.name;
+          Chat.setPeerName(msg.sender, msg.name);
+          updatePeerIndicators();
+        }
+      } catch (e) { /* ignore */ }
+    });
   }
 
   // ── Signaling event handlers ──
@@ -141,6 +173,14 @@
 
   // ── Room actions ──
   async function createRoom() {
+    const name = inputDisplayName.value.trim();
+    if (!name) {
+      UI.showStatus("landing-status", "Please enter your name first", "error");
+      inputDisplayName.focus();
+      return;
+    }
+    myDisplayName = name;
+
     const serverUrl = inputServerUrl.value.trim();
     if (!serverUrl) {
       UI.showStatus("landing-status", "Please enter a server URL", "error");
@@ -163,6 +203,14 @@
   }
 
   async function joinRoom() {
+    const name = inputDisplayName.value.trim();
+    if (!name) {
+      UI.showStatus("landing-status", "Please enter your name first", "error");
+      inputDisplayName.focus();
+      return;
+    }
+    myDisplayName = name;
+
     const serverUrl = inputServerUrl.value.trim();
     const code = inputRoomCode.value.trim().toUpperCase();
 
@@ -238,9 +286,11 @@
     const connectedPeers = WebRTCMesh.getConnectedPeerIds();
 
     const getIcon = (id) => (id === 0 || id === 1) ? "💖" : "🤡";
-    const getLabel = (id, isSelf) => {
-      if (id === 0 || id === 1) return isSelf ? "You (Partner)" : "Partner";
-      return isSelf ? "You (3rd Wheel)" : "3rd Wheel";
+    const getName = (id, isSelf) => {
+      const name = isSelf ? myDisplayName : (peerNames[id] || null);
+      const role = (id === 0 || id === 1) ? "Partner" : "3rd Wheel";
+      if (name) return `${name} (${role})`;
+      return isSelf ? `You (${role})` : role;
     };
 
     // Reset all
@@ -258,8 +308,8 @@
       if (selfDot) {
         selfDot.classList.add("self");
         if (myPeerId === 2) selfDot.classList.add("third-wheeler");
-        selfDot.innerHTML = `${getIcon(myPeerId)}<span class="peer-label">${getLabel(myPeerId, true)}</span>`;
-        selfDot.title = getLabel(myPeerId, true);
+        selfDot.innerHTML = `${getIcon(myPeerId)}<span class="peer-label">${getName(myPeerId, true)}</span>`;
+        selfDot.title = getName(myPeerId, true);
       }
     }
 
@@ -269,8 +319,8 @@
       if (dot) {
         dot.classList.add("connected");
         if (peerId === 2) dot.classList.add("third-wheeler");
-        dot.innerHTML = `${getIcon(peerId)}<span class="peer-label">${getLabel(peerId, false)}</span>`;
-        dot.title = getLabel(peerId, false);
+        dot.innerHTML = `${getIcon(peerId)}<span class="peer-label">${getName(peerId, false)}</span>`;
+        dot.title = getName(peerId, false);
       }
     }
 

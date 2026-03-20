@@ -5,7 +5,7 @@
 window.Chat = (() => {
   const CHANNEL = "chat";
   const PEER_COLORS = ["var(--peer-0)", "var(--peer-1)", "var(--peer-2)"];
-  const PEER_NAMES = ["You", "Peer 1", "Peer 2"];
+  const peerNames = { 0: "You", 1: "Peer 1", 2: "Peer 2" };
 
   let messagesContainer = null;
   let inputField = null;
@@ -64,7 +64,7 @@ window.Chat = (() => {
     el.className = `chat-msg ${isSelf ? "self" : "peer"}`;
 
     const peerIndex = senderId;
-    const senderName = isSelf ? "You" : (PEER_NAMES[peerIndex] || `Peer ${peerIndex}`);
+    const senderName = isSelf ? "You" : (peerNames[peerIndex] || `Peer ${peerIndex}`);
     const senderColor = PEER_COLORS[peerIndex] || "var(--text-secondary)";
     const timeStr = new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -119,5 +119,9 @@ window.Chat = (() => {
     return div.innerHTML;
   }
 
-  return { init, addSystemMessage, setActiveTab };
+  function setPeerName(peerId, name) {
+    peerNames[peerId] = name;
+  }
+
+  return { init, addSystemMessage, setActiveTab, setPeerName };
 })();

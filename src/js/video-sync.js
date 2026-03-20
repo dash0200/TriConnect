@@ -173,8 +173,9 @@ window.VideoSync = (() => {
     const videoObj = document.createElement("video");
     videoObj.src = src;
     videoObj.controls = true;
-    videoObj.style.width = "100%";
-    videoObj.style.height = "100%";
+    videoObj.style.maxWidth = "100%";
+    videoObj.style.maxHeight = "100%";
+    videoObj.style.objectFit = "contain";
     videoObj.style.backgroundColor = "black";
     if (initialTime) videoObj.currentTime = initialTime;
     
