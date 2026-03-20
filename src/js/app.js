@@ -44,10 +44,16 @@
     btnCopyCode.addEventListener("click", copyRoomCode);
     btnLeave.addEventListener("click", leaveRoom);
 
-    // Tab switching
-    document.querySelectorAll(".tab").forEach((tab) => {
-      tab.addEventListener("click", () => switchTab(tab.dataset.tab));
-    });
+    // Chat sidebar toggle
+    const btnToggleChat = document.getElementById("btn-toggle-chat");
+    const panelChat = document.getElementById("panel-chat");
+    if (btnToggleChat && panelChat) {
+      btnToggleChat.addEventListener("click", () => {
+        panelChat.classList.toggle("collapsed");
+        const isHidden = panelChat.classList.contains("collapsed");
+        Chat.setActiveTab(!isHidden);
+      });
+    }
 
     // Wire up signaling events
     setupSignalingHandlers();
@@ -146,6 +152,7 @@
     UI.showStatus("landing-status", "Connecting to server...", "info");
 
     try {
+      if (window.VoiceChat) await VoiceChat.init();
       await Signaling.connect(serverUrl);
       Signaling.createRoom();
     } catch (err) {
@@ -173,6 +180,7 @@
     UI.showStatus("landing-status", "Connecting to server...", "info");
 
     try {
+      if (window.VoiceChat) await VoiceChat.init();
       await Signaling.connect(serverUrl);
       Signaling.joinRoom(code);
     } catch (err) {
@@ -223,18 +231,7 @@
     landingView.classList.add("active");
   }
 
-  // ── Tab management ──
-  function switchTab(tabName) {
-    document.querySelectorAll(".tab").forEach((t) => {
-      t.classList.toggle("active", t.dataset.tab === tabName);
-    });
-    document.querySelectorAll(".panel").forEach((p) => {
-      p.classList.toggle("active", p.id === `panel-${tabName}`);
-    });
-
-    // Notify chat module
-    Chat.setActiveTab(tabName === "chat");
-  }
+  // ── (Old Tab management removed) ──
 
   // ── Peer indicators ──
   function updatePeerIndicators() {

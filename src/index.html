@@ -116,71 +116,26 @@
         </div>
       </div>
       <div class="top-bar-right">
+        <button id="btn-toggle-chat" class="btn btn-secondary btn-sm" title="Toggle Chat" style="position: relative;">
+          💬 Chat
+          <span class="tab-badge hidden" id="chat-badge" style="position: absolute; top: -5px; right: -5px;">0</span>
+        </button>
+        <button id="btn-mic-toggle" class="btn btn-ghost btn-sm" style="display: none;" title="Mute Microphone">🎤</button>
         <button id="btn-leave" class="btn btn-danger btn-sm">Leave</button>
       </div>
     </header>
 
-    <!-- Tab navigation -->
-    <nav class="tab-bar">
-      <button class="tab active" data-tab="chat" id="tab-chat">
-        <span class="tab-icon">💬</span> Chat
-        <span class="tab-badge hidden" id="chat-badge">0</span>
-      </button>
-      <button class="tab" data-tab="files" id="tab-files">
-        <span class="tab-icon">📁</span> Files
-      </button>
-      <button class="tab" data-tab="video" id="tab-video">
-        <span class="tab-icon">▶️</span> Watch Together
-      </button>
-    </nav>
-
-    <!-- Tab content -->
-    <main class="tab-content">
-
-      <!-- ── CHAT ── -->
-      <section class="panel active" id="panel-chat">
-        <div class="chat-messages" id="chat-messages">
-          <div class="chat-empty">
-            <span class="chat-empty-icon">💬</span>
-            <p>No messages yet. Say hello!</p>
-          </div>
-        </div>
-        <div class="chat-input-bar">
-          <input
-            type="text"
-            id="chat-input"
-            class="input-field"
-            placeholder="Type a message..."
-            autocomplete="off"
-          >
-          <button id="btn-send-chat" class="btn btn-primary">Send</button>
-        </div>
-      </section>
-
-      <!-- ── FILES ── -->
-      <section class="panel" id="panel-files">
-        <div class="files-toolbar">
-          <button id="btn-send-file" class="btn btn-primary">
-            <span class="btn-icon">📤</span> Send File
-          </button>
-          <div class="file-drop-hint">or drag &amp; drop a file here</div>
-        </div>
-        <div class="file-transfers" id="file-transfers">
-          <div class="files-empty">
-            <span class="files-empty-icon">📁</span>
-            <p>No transfers yet. Send or receive files peer-to-peer.</p>
-          </div>
-        </div>
-      </section>
+    <!-- Main content -->
+    <main class="main-content">
 
       <!-- ── VIDEO ── -->
-      <section class="panel" id="panel-video">
+      <section id="panel-video">
         <div class="video-input-bar">
           <input
             type="text"
             id="video-url-input"
             class="input-field"
-            placeholder="Paste a YouTube URL..."
+            placeholder="Paste a YouTube or video URL (.mp4, .webm)..."
             autocomplete="off"
           >
           <button id="btn-load-video" class="btn btn-primary">Load</button>
@@ -188,13 +143,34 @@
         <div class="video-container">
           <div id="youtube-player" class="youtube-player-placeholder">
             <span class="video-placeholder-icon">▶️</span>
-            <p>Paste a YouTube URL above to start watching together</p>
+            <p>Paste a YouTube or video URL above to start watching together</p>
           </div>
         </div>
         <div class="video-controls">
           <div class="video-sync-status" id="video-sync-status">
             <span class="sync-dot"></span> Waiting for video...
           </div>
+        </div>
+      </section>
+
+      <!-- ── CHAT ── -->
+      <section id="panel-chat">
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-empty">
+            <span class="chat-empty-icon">💬</span>
+            <p>No messages yet. Say hello!</p>
+          </div>
+        </div>
+        <div class="chat-input-bar">
+          <button id="btn-send-file" class="btn btn-ghost btn-icon" title="Send File" style="font-size: 1.25rem; margin-right: 0.5rem; padding: 0.2rem 0.5rem; border-radius: 6px;">📎</button>
+          <input
+            type="text"
+            id="chat-input"
+            class="input-field"
+            placeholder="Type a message or drag a file here..."
+            autocomplete="off"
+          >
+          <button id="btn-send-chat" class="btn btn-primary">Send</button>
         </div>
       </section>
 
@@ -208,6 +184,7 @@
   <script src="js/env.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/signaling.js"></script>
+  <script src="js/voice.js"></script>
   <script src="js/webrtc.js"></script>
   <script src="js/chat.js"></script>
   <script src="js/file-transfer.js"></script>

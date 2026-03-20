@@ -17,7 +17,7 @@ window.FileTransfer = (() => {
   const isTauri = typeof window.__TAURI__ !== "undefined";
 
   function init() {
-    transfersContainer = document.getElementById("file-transfers");
+    transfersContainer = document.getElementById("chat-messages");
 
     document.getElementById("btn-send-file").addEventListener("click", pickAndSendFile);
 
@@ -40,8 +40,8 @@ window.FileTransfer = (() => {
       }
     });
 
-    // Drag & drop on the files panel
-    const panel = document.getElementById("panel-files");
+    // Drag & drop on the chat panel
+    const panel = document.getElementById("panel-chat");
     panel.addEventListener("dragover", (e) => {
       e.preventDefault();
       panel.classList.add("drag-over");
@@ -262,14 +262,35 @@ window.FileTransfer = (() => {
   // ── UI rendering ──
 
   function addTransferCard(state) {
-    const emptyEl = transfersContainer.querySelector(".files-empty");
-    if (emptyEl) emptyEl.remove();
+    // Determine sender name/color (similar to chat)
+    const isUpload = state.direction === "upload";
+    const PEER_COLORS = ["var(--peer-0)", "var(--peer-1)", "var(--peer-2)"];
+    const PEER_NAMES = ["You", "Peer 1", "Peer 2"];
+
+    const senderIndex = isUpload ? WebRTCMesh.getMyPeerId() : state.fromPeer;
+    const senderName = isUpload ? "You" : (PEER_NAMES[senderIndex] || `Peer ${senderIndex}`);
+    const senderColor = PEER_COLORS[senderIndex] || "var(--text-secondary)";
+    const timeStr = new Date(state.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
     const card = document.createElement("div");
-    card.className = "file-transfer-card";
-    card.id = `transfer-${state.fileId}`;
-    card.innerHTML = renderCardHTML(state);
-    transfersContainer.prepend(card);
+    card.className = `chat-msg ${isUpload ? "self" : "peer"}`;
+    card.id = `transfer-wrapper-${state.fileId}`;
+    
+    // Wrap transfer card in chat bubble style
+    card.innerHTML = `
+      <span class="msg-sender" style="color: ${senderColor}">${senderName} sent a file</span>
+      <div class="msg-bubble file-transfer-bubble" id="transfer-${state.fileId}">
+        ${renderCardHTML(state)}
+      </div>
+      <span class="msg-time">${timeStr}</span>
+    `;
+
+    // Remove empty chat state if present
+    const emptyEl = transfersContainer.querySelector(".chat-empty");
+    if (emptyEl) emptyEl.remove();
+
+    transfersContainer.appendChild(card);
+    transfersContainer.scrollTop = transfersContainer.scrollHeight;
 
     // Bind cancel button
     const cancelBtn = card.querySelector(".btn-cancel-transfer");

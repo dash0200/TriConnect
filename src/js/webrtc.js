@@ -40,8 +40,25 @@ window.WebRTCMesh = (() => {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     const channels = new Map();
 
+    // Add local voice track if available
+    if (window.VoiceChat) {
+      const stream = VoiceChat.getStream();
+      if (stream) {
+        stream.getTracks().forEach(track => {
+          pc.addTrack(track, stream);
+        });
+      }
+    }
+
     const peerData = { pc, channels, remotePeerId, isInitiator };
     peers.set(remotePeerId, peerData);
+
+    // Incoming track handling
+    pc.ontrack = (event) => {
+      if (window.VoiceChat) {
+        VoiceChat.handleIncomingTrack(remotePeerId, event);
+      }
+    };
 
     // ICE candidate handling
     pc.onicecandidate = (event) => {
@@ -176,6 +193,9 @@ window.WebRTCMesh = (() => {
     if (!peer) return;
     peer.pc.close();
     peers.delete(remotePeerId);
+    if (window.VoiceChat) {
+      VoiceChat.cleanupPeer(remotePeerId);
+    }
     console.log(`[WebRTC] Removed peer ${remotePeerId}`);
   }
 

@@ -1,38 +1,43 @@
 /* ═══════════════════════════════════════════════════════════
-   video-sync.js — YouTube synchronized viewing
-   Uses YouTube IFrame Player API
+   video-sync.js — Synchronized viewing
+   Supports YouTube IFrame API and HTML5 <video>
    ═══════════════════════════════════════════════════════════ */
 
 window.VideoSync = (() => {
   const CHANNEL = "video-sync";
-  const DRIFT_THRESHOLD = 0.8; // seconds — correct if drift exceeds this
-  const HEARTBEAT_INTERVAL = 2000; // ms
+  const DRIFT_THRESHOLD = 2.0; 
+  const HEARTBEAT_INTERVAL = 2000; 
 
-  let player = null;
-  let playerReady = false;
-  let currentVideoId = null;
-  let isRemoteAction = false; // flag to ignore events triggered by remote sync
+  const STATE_PLAYING = 1;
+  const STATE_PAUSED = 2;
+  const STATE_BUFFERING = 3;
+  const STATE_ENDED = 0;
+
+  let playerWrapper = null;
+  let currentVideoId = null;   // For YT it's the 11-char ID, for HTML5 it's the URL
+  let currentVideoType = null; // "youtube" | "html5"
+  
+  let isRemoteAction = false; 
   let heartbeatTimer = null;
-  let lastActionBy = null; // peerId of last user who performed an action
+  let lastActionBy = null; 
 
-  // Buffering tracking
   let localBuffering = false;
   let peerBuffering = new Set();
+  let wasPlayingBeforeBuffer = false;
 
   function init() {
     document.getElementById("btn-load-video").addEventListener("click", () => {
       const urlInput = document.getElementById("video-url-input");
       const url = urlInput.value.trim();
       if (!url) return;
-      const videoId = extractVideoId(url);
-      if (!videoId) {
-        UI.toast("Invalid YouTube URL", "warning");
+      const parsed = parseVideoUrl(url);
+      if (!parsed) {
+        UI.toast("Invalid video URL", "warning");
         return;
       }
-      loadVideo(videoId, true);
+      loadVideo(parsed.type, parsed.idOrSrc, true, 0, true);
     });
 
-    // Listen for video sync messages
     WebRTCMesh.on("message", ({ peerId, channel, data }) => {
       if (channel !== CHANNEL) return;
       try {
@@ -43,113 +48,235 @@ window.VideoSync = (() => {
       }
     });
 
-    // Load YouTube IFrame API
+    // When a new peer connects, send them our current state!
+    WebRTCMesh.on("peer-connected", ({ peerId }) => {
+      if (playerWrapper && currentVideoId) {
+         // Determine if we are currently playing
+         const isPlaying = playerWrapper.getState() === STATE_PLAYING;
+         const msg = JSON.stringify({
+            type: "video-action",
+            action: "load",
+            videoType: currentVideoType,
+            videoId: currentVideoId,
+            time: playerWrapper.getCurrentTime(),
+            forcePlay: isPlaying,
+            sender: WebRTCMesh.getMyPeerId(),
+         });
+         // Send directly to the newly connected peer so they catch up
+         setTimeout(() => {
+           WebRTCMesh.sendToPeer(peerId, CHANNEL, msg);
+         }, 500); // give them a tiny bit of time to setup
+      }
+    });
+
     loadYouTubeAPI();
   }
 
   function loadYouTubeAPI() {
-    if (window.YT && window.YT.Player) {
-      // API already loaded
-      return;
-    }
+    if (window.YT && window.YT.Player) return;
     const tag = document.createElement("script");
     tag.src = "https://www.youtube.com/iframe_api";
     document.head.appendChild(tag);
   }
 
-  // Called by YouTube API when ready
   window.onYouTubeIframeAPIReady = () => {
     console.log("[VideoSync] YouTube IFrame API ready");
-    // Player will be created when a video is loaded
   };
 
-  function createPlayer(videoId) {
-    const container = document.getElementById("youtube-player");
-    container.innerHTML = ""; // clear placeholder
+  function parseVideoUrl(url) {
+    const ytPatterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+      /^([a-zA-Z0-9_-]{11})$/,
+    ];
+    for (const pattern of ytPatterns) {
+      const match = url.match(pattern);
+      if (match) return { type: "youtube", idOrSrc: match[1] };
+    }
+    // If it's a URL ending in common video extensions, or just any http URL
+    if (url.startsWith("http")) {
+      return { type: "html5", idOrSrc: url };
+    }
+    return null;
+  }
 
-    // Create a div for the player
+  // ── Unified Player Creation ──
+
+  function createPlayer(type, idOrSrc, initialTime, forcePlay) {
+    if (playerWrapper) {
+      playerWrapper.destroy();
+      playerWrapper = null;
+    }
+
+    const container = document.getElementById("youtube-player");
+    container.innerHTML = "";
+
+    if (type === "youtube") {
+      createYouTubePlayer(container, idOrSrc, initialTime, forcePlay);
+    } else if (type === "html5") {
+      createHtml5Player(container, idOrSrc, initialTime, forcePlay);
+    }
+  }
+
+  function createYouTubePlayer(container, videoId, initialTime, forcePlay) {
     const playerDiv = document.createElement("div");
     playerDiv.id = "yt-player-element";
     container.appendChild(playerDiv);
 
-    player = new YT.Player("yt-player-element", {
+    let ytPlayer;
+    let isReady = false;
+
+    ytPlayer = new YT.Player("yt-player-element", {
       videoId: videoId,
       width: "100%",
       height: "100%",
       playerVars: {
-        autoplay: 0,
+        autoplay: forcePlay ? 1 : 0,
+        start: Math.floor(initialTime || 0),
         controls: 1,
         modestbranding: 1,
         rel: 0,
-        iv_load_policy: 3, // no annotations
       },
       events: {
-        onReady: onPlayerReady,
-        onStateChange: onPlayerStateChange,
-      },
+        onReady: () => {
+          isReady = true;
+          updateSyncStatus("ready");
+          if (forcePlay) ytPlayer.playVideo();
+        },
+        onStateChange: (e) => {
+          if (e.data === YT.PlayerState.UNSTARTED) return;
+          const mappedState = 
+             e.data === YT.PlayerState.PLAYING ? STATE_PLAYING :
+             e.data === YT.PlayerState.PAUSED ? STATE_PAUSED :
+             e.data === YT.PlayerState.BUFFERING ? STATE_BUFFERING :
+             e.data === YT.PlayerState.ENDED ? STATE_ENDED : null;
+          
+          if (mappedState !== null) handleInternalStateChange(mappedState);
+        }
+      }
     });
+
+    playerWrapper = {
+      isReady: () => isReady,
+      play: () => ytPlayer.playVideo && ytPlayer.playVideo(),
+      pause: () => ytPlayer.pauseVideo && ytPlayer.pauseVideo(),
+      seekTo: (time) => ytPlayer.seekTo && ytPlayer.seekTo(time, true),
+      getCurrentTime: () => (ytPlayer.getCurrentTime ? ytPlayer.getCurrentTime() : 0),
+      getDuration: () => (ytPlayer.getDuration ? ytPlayer.getDuration() : 0),
+      getState: () => {
+        if (!ytPlayer.getPlayerState) return STATE_PAUSED;
+        const s = ytPlayer.getPlayerState();
+        return s === YT.PlayerState.PLAYING ? STATE_PLAYING :
+               s === YT.PlayerState.BUFFERING ? STATE_BUFFERING : STATE_PAUSED;
+      },
+      destroy: () => ytPlayer.destroy && ytPlayer.destroy(),
+    };
   }
 
-  function onPlayerReady() {
-    playerReady = true;
-    console.log("[VideoSync] Player ready");
-    updateSyncStatus("ready");
+  function createHtml5Player(container, src, initialTime, forcePlay) {
+    const videoObj = document.createElement("video");
+    videoObj.src = src;
+    videoObj.controls = true;
+    videoObj.style.width = "100%";
+    videoObj.style.height = "100%";
+    videoObj.style.backgroundColor = "black";
+    if (initialTime) videoObj.currentTime = initialTime;
+    
+    container.appendChild(videoObj);
+
+    let isReady = false;
+
+    videoObj.addEventListener("loadedmetadata", () => {
+      isReady = true;
+      updateSyncStatus("ready");
+      if (forcePlay) videoObj.play().catch(e => console.warn("Auto-play blocked", e));
+    });
+
+    videoObj.addEventListener("play", () => handleInternalStateChange(STATE_PLAYING));
+    videoObj.addEventListener("pause", () => handleInternalStateChange(STATE_PAUSED));
+    videoObj.addEventListener("waiting", () => handleInternalStateChange(STATE_BUFFERING));
+    videoObj.addEventListener("playing", () => handleInternalStateChange(STATE_PLAYING));
+    videoObj.addEventListener("ended", () => handleInternalStateChange(STATE_ENDED));
+
+    playerWrapper = {
+      isReady: () => isReady,
+      play: () => videoObj.play().catch(()=>{}),
+      pause: () => videoObj.pause(),
+      seekTo: (time) => { videoObj.currentTime = time; },
+      getCurrentTime: () => videoObj.currentTime,
+      getDuration: () => videoObj.duration || 0,
+      getState: () => {
+        if (videoObj.readyState < 3 && videoObj.networkState === 2) return STATE_BUFFERING;
+        return videoObj.paused ? STATE_PAUSED : STATE_PLAYING;
+      },
+      destroy: () => {
+        videoObj.pause();
+        videoObj.removeAttribute('src');
+        videoObj.load();
+        videoObj.remove();
+      }
+    };
   }
 
-  function onPlayerStateChange(event) {
-    if (isRemoteAction) return; // ignore events triggered by remote sync
+  // ── State handling ──
 
-    const state = event.data;
+  function handleInternalStateChange(state) {
+    if (isRemoteAction) return;
 
     switch (state) {
-      case YT.PlayerState.PLAYING:
+      case STATE_PLAYING:
         localBuffering = false;
-        broadcastAction("play", player.getCurrentTime());
+        wasPlayingBeforeBuffer = true;
+        broadcastAction("play", playerWrapper.getCurrentTime());
         startHeartbeat();
         updateSyncStatus("synced");
         break;
 
-      case YT.PlayerState.PAUSED:
-        broadcastAction("pause", player.getCurrentTime());
+      case STATE_PAUSED:
+        if (!peerBuffering.size) {
+            wasPlayingBeforeBuffer = false;
+        }
+        broadcastAction("pause", playerWrapper.getCurrentTime());
         stopHeartbeat();
         updateSyncStatus("paused");
         break;
 
-      case YT.PlayerState.BUFFERING:
+      case STATE_BUFFERING:
+        if (playerWrapper.getState() === STATE_PLAYING) {
+            wasPlayingBeforeBuffer = true;
+        }
         localBuffering = true;
         broadcastBuffering(true);
         updateSyncStatus("buffering");
         break;
 
-      case YT.PlayerState.ENDED:
-        broadcastAction("pause", player.getDuration());
+      case STATE_ENDED:
+        broadcastAction("pause", playerWrapper.getDuration());
         stopHeartbeat();
         updateSyncStatus("ended");
         break;
     }
   }
 
-  function loadVideo(videoId, broadcastIt = false) {
-    currentVideoId = videoId;
-
-    if (!window.YT || !window.YT.Player) {
-      // API not loaded yet, wait
-      setTimeout(() => loadVideo(videoId, broadcastIt), 500);
+  function loadVideo(type, idOrSrc, broadcastIt = false, time = 0, forcePlay = true) {
+    if (type === "youtube" && (!window.YT || !window.YT.Player)) {
+      setTimeout(() => loadVideo(type, idOrSrc, broadcastIt, time, forcePlay), 500);
       return;
     }
 
-    if (!player || !playerReady) {
-      createPlayer(videoId);
-    } else {
-      player.loadVideoById(videoId);
-    }
+    currentVideoType = type;
+    currentVideoId = idOrSrc;
+
+    // Always recreate the player on new load to avoid stale state bugs (black screen fix)
+    createPlayer(type, idOrSrc, time, forcePlay);
 
     if (broadcastIt) {
       const msg = JSON.stringify({
         type: "video-action",
         action: "load",
-        videoId,
-        time: 0,
+        videoType: type,
+        videoId: idOrSrc,
+        time: time,
+        forcePlay: forcePlay,
         sender: WebRTCMesh.getMyPeerId(),
       });
       WebRTCMesh.broadcast(CHANNEL, msg);
@@ -160,12 +287,14 @@ window.VideoSync = (() => {
   }
 
   function broadcastAction(action, time) {
+    if (!playerWrapper) return;
     lastActionBy = WebRTCMesh.getMyPeerId();
     const msg = JSON.stringify({
       type: "video-action",
       action,
       time,
       videoId: currentVideoId,
+      videoType: currentVideoType,
       sender: WebRTCMesh.getMyPeerId(),
     });
     WebRTCMesh.broadcast(CHANNEL, msg);
@@ -189,9 +318,9 @@ window.VideoSync = (() => {
         break;
       case "video-buffering":
         peerBuffering.add(peerId);
-        if (player && playerReady) {
+        if (playerWrapper && playerWrapper.isReady()) {
           isRemoteAction = true;
-          player.pauseVideo();
+          playerWrapper.pause();
           setTimeout(() => (isRemoteAction = false), 200);
         }
         updateSyncStatus("peer-buffering");
@@ -199,6 +328,11 @@ window.VideoSync = (() => {
       case "video-ready":
         peerBuffering.delete(peerId);
         if (peerBuffering.size === 0 && !localBuffering) {
+          if (wasPlayingBeforeBuffer && playerWrapper && playerWrapper.isReady()) {
+            isRemoteAction = true;
+            playerWrapper.play();
+            setTimeout(() => (isRemoteAction = false), 200);
+          }
           updateSyncStatus("synced");
         }
         break;
@@ -210,50 +344,56 @@ window.VideoSync = (() => {
 
     switch (msg.action) {
       case "load":
-        if (msg.videoId !== currentVideoId) {
-          loadVideo(msg.videoId, false);
+        // Fix black screen by always accepting remote URL with fresh player
+        if (msg.videoId !== currentVideoId || !playerWrapper) {
+          loadVideo(msg.videoType, msg.videoId, false, msg.time, msg.forcePlay);
+        } else {
+          // If it's already loaded but they are syncing us, just seek
+          if (playerWrapper && playerWrapper.isReady()) {
+               playerWrapper.seekTo(msg.time);
+               if (msg.forcePlay) playerWrapper.play();
+          }
         }
         break;
 
       case "play":
-        if (!player || !playerReady) break;
-        player.seekTo(msg.time, true);
-        player.playVideo();
+        if (!playerWrapper || !playerWrapper.isReady()) break;
+        playerWrapper.seekTo(msg.time);
+        playerWrapper.play();
         startHeartbeat();
         updateSyncStatus("synced");
         break;
 
       case "pause":
-        if (!player || !playerReady) break;
-        player.seekTo(msg.time, true);
-        player.pauseVideo();
+        if (!playerWrapper || !playerWrapper.isReady()) break;
+        playerWrapper.seekTo(msg.time);
+        playerWrapper.pause();
         stopHeartbeat();
         updateSyncStatus("paused");
         break;
 
       case "seek":
-        if (!player || !playerReady) break;
-        player.seekTo(msg.time, true);
+        if (!playerWrapper || !playerWrapper.isReady()) break;
+        playerWrapper.seekTo(msg.time);
         break;
     }
 
-    // Clear the remote flag after a short delay
     setTimeout(() => {
       isRemoteAction = false;
     }, 300);
   }
 
   function handleHeartbeat(peerId, msg) {
-    if (!player || !playerReady) return;
-    if (player.getPlayerState() !== YT.PlayerState.PLAYING) return;
+    if (!playerWrapper || !playerWrapper.isReady()) return;
+    if (playerWrapper.getState() !== STATE_PLAYING) return;
 
-    const localTime = player.getCurrentTime();
+    const localTime = playerWrapper.getCurrentTime();
     const drift = Math.abs(localTime - msg.time);
 
     if (drift > DRIFT_THRESHOLD) {
-      console.log(`[VideoSync] Drift correction: local=${localTime.toFixed(2)}, remote=${msg.time.toFixed(2)}, drift=${drift.toFixed(2)}s`);
+      console.log(`[VideoSync] Drift correction: drift=${drift.toFixed(2)}s`);
       isRemoteAction = true;
-      player.seekTo(msg.time, true);
+      playerWrapper.seekTo(msg.time);
       setTimeout(() => (isRemoteAction = false), 200);
       updateSyncStatus("correcting");
       setTimeout(() => updateSyncStatus("synced"), 1000);
@@ -265,15 +405,14 @@ window.VideoSync = (() => {
     lastActionBy = lastActionBy || WebRTCMesh.getMyPeerId();
 
     heartbeatTimer = setInterval(() => {
-      if (!player || !playerReady) return;
-      if (player.getPlayerState() !== YT.PlayerState.PLAYING) return;
+      if (!playerWrapper || !playerWrapper.isReady()) return;
+      if (playerWrapper.getState() !== STATE_PLAYING) return;
 
-      // Only the last person who performed an action sends heartbeats
       if (lastActionBy !== WebRTCMesh.getMyPeerId()) return;
 
       const msg = JSON.stringify({
         type: "video-heartbeat",
-        time: player.getCurrentTime(),
+        time: playerWrapper.getCurrentTime(),
         state: "playing",
         sender: WebRTCMesh.getMyPeerId(),
       });
@@ -290,6 +429,7 @@ window.VideoSync = (() => {
 
   function updateSyncStatus(status) {
     const el = document.getElementById("video-sync-status");
+    if (!el) return;
     const dot = el.querySelector(".sync-dot");
 
     const statusMap = {
@@ -305,20 +445,7 @@ window.VideoSync = (() => {
 
     const s = statusMap[status] || { text: status, dotClass: "" };
     el.childNodes[el.childNodes.length - 1].textContent = " " + s.text;
-    dot.className = "sync-dot " + s.dotClass;
-  }
-
-  function extractVideoId(url) {
-    // Handle various YouTube URL formats
-    const patterns = [
-      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
-      /^([a-zA-Z0-9_-]{11})$/, // bare video ID
-    ];
-    for (const pattern of patterns) {
-      const match = url.match(pattern);
-      if (match) return match[1];
-    }
-    return null;
+    if (dot) dot.className = "sync-dot " + s.dotClass;
   }
 
   return { init };
