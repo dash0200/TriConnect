@@ -9,6 +9,11 @@
   let myPeerId = null;
   let myDisplayName = "";
   const peerNames = {}; // peerId → display name
+  
+  // ── Crypto state ──
+  let myKeyPair = null;
+  let sharedSecrets = {}; // peerId -> sharedSecret (base64)
+  const isTauri = typeof window.__TAURI__ !== "undefined";
 
   // ── DOM elements ──
   const landingView = document.getElementById("landing-view");
@@ -25,13 +30,24 @@
   const btnLeave = document.getElementById("btn-leave");
 
   // ── Init ──
-  function init() {
+  async function init() {
     // Load environment variables if present
     if (window.APP_ENV && window.APP_ENV.SIGNALING_URL) {
       inputServerUrl.value = window.APP_ENV.SIGNALING_URL;
     }
 
+    // Initialize crypto first
+    if (isTauri) {
+      try {
+        myKeyPair = await window.__TAURI__.core.invoke("generate_keypair");
+        console.log("[Crypto] Generated local X25519 keypair");
+      } catch (err) {
+        console.error("[Crypto] Failed to generate keypair:", err);
+      }
+    }
+
     // Initialize feature modules
+    VoiceChat.init();
     Chat.init();
     FileTransfer.init();
     VideoSync.init();
@@ -66,33 +82,105 @@
     console.log("[App] TriConnect initialized");
   }
 
-  // ── Name exchange over WebRTC ──
+  // ── Notify ──
+  function sendNotification(title, body) {
+    if (!document.hasFocus() && isTauri && window.__TAURI__.notification) {
+      window.__TAURI__.notification.sendNotification({ title, body });
+    }
+  }
+
+  // ── Name & Key exchange over WebRTC ──
   function setupNameExchange() {
-    // When a chat channel opens, announce our name
+
+    const displayRoomCodeParent = document.getElementById("display-room-code")?.parentElement;
+    if (displayRoomCodeParent) {
+      displayRoomCodeParent.addEventListener("click", copyRoomCode);
+      displayRoomCodeParent.style.cursor = "pointer";
+      displayRoomCodeParent.title = "Click to copy room code";
+    }
+
+    // Toggle chat panel opens, announce our name and public key
     WebRTCMesh.on("channel-open", ({ peerId, channel }) => {
       if (channel === "chat") {
         const msg = JSON.stringify({
           type: "name-announce",
           name: myDisplayName,
+          publicKey: myKeyPair ? myKeyPair.public_key : null,
           sender: WebRTCMesh.getMyPeerId(),
         });
+        // We send this UNENCRYPTED since it's the key exchange
         WebRTCMesh.sendToPeer(peerId, "chat", msg);
       }
     });
 
-    // Listen for name announcements
-    WebRTCMesh.on("message", ({ peerId, channel, data }) => {
+    // Listen for name & key announcements (these are sent unencrypted)
+    WebRTCMesh.on("message", async ({ peerId, channel, data }) => {
       if (channel !== "chat") return;
-      try {
-        const msg = JSON.parse(data);
-        if (msg.type === "name-announce") {
-          peerNames[msg.sender] = msg.name;
-          Chat.setPeerName(msg.sender, msg.name);
-          updatePeerIndicators();
+      
+      // If it's a JSON string, try to parse it
+      if (typeof data === "string") {
+        try {
+          const msg = JSON.parse(data);
+          if (msg.type === "name-announce") {
+            // Robustly ensure this peer is in our mapping loop
+            WebRTCMesh.createPeerConnection(msg.sender, false);
+            
+            peerNames[msg.sender] = msg.name;
+            Chat.setPeerName(msg.sender, msg.name);
+            updatePeerIndicators();
+            
+            // Derive shared secret if they sent a public key and we have our secret
+            if (msg.publicKey && myKeyPair && isTauri) {
+              try {
+                const sharedSecret = await window.__TAURI__.core.invoke("derive_shared_secret", {
+                  mySecretB64: myKeyPair.secret_key,
+                  theirPublicB64: msg.publicKey
+                });
+                sharedSecrets[msg.sender] = sharedSecret;
+                console.log(`[Crypto] Established shared secret with peer ${msg.sender}`);
+                updateEncryptionBadge();
+                UI.toast(`E2E Encryption enabled with ${msg.name}`, "info");
+              } catch (err) {
+                console.error(`[Crypto] Failed to derive shared secret:`, err);
+              }
+            }
+          }
+        } catch (e) {
+          // If it fails to parse, it might be an encrypted message, handled by Chat
         }
-      } catch (e) { /* ignore */ }
+      }
     });
   }
+  
+  function updateEncryptionBadge() {
+    let encryptedPeers = Object.keys(sharedSecrets).length;
+    let totalConnected = WebRTCMesh.getConnectedPeerIds().length;
+    
+    // Create badge if not exists
+    let badge = document.getElementById("encryption-badge");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.id = "encryption-badge";
+      badge.className = "room-label";
+      badge.style.marginLeft = "10px";
+      document.querySelector(".top-bar-left").appendChild(badge);
+    }
+    
+    if (totalConnected === 0) {
+      badge.innerHTML = "";
+    } else if (encryptedPeers === totalConnected) {
+      badge.innerHTML = `<span style="color:var(--text-accent)">🔒 E2E Encrypted</span>`;
+    } else {
+      badge.innerHTML = `<span style="color:var(--peer-2)">🔓 Unencrypted</span>`;
+    }
+  }
+  
+  // Expose shared secrets to feature modules
+  window.AppCrypto = {
+    getSharedSecret: (peerId) => sharedSecrets[peerId] || null,
+    isTauri: () => isTauri,
+    sendNotification
+  };
 
   // ── Signaling event handlers ──
   function setupSignalingHandlers() {
@@ -103,6 +191,7 @@
       showApp();
       UI.toast(`Room created! Code: ${roomCode}`, "success");
       Chat.addSystemMessage(`Room ${roomCode} created. Share the code to invite others.`);
+      copyRoomCode();
     });
 
     Signaling.on("room-joined", (msg) => {
@@ -122,17 +211,21 @@
     });
 
     Signaling.on("peer-joined", (msg) => {
+      WebRTCMesh.createPeerConnection(msg.peerId, false);
       UI.toast(`Peer ${msg.peerId} joined the room`, "info");
       Chat.addSystemMessage(`Peer ${msg.peerId} joined.`);
       updatePeerIndicators();
-      // The existing peer waits for the offer from the joiner
+      updateEncryptionBadge();
+      // The existing peer waits for the offer from the joiner natively in Rust
     });
 
     Signaling.on("peer-left", (msg) => {
       UI.toast(`Peer ${msg.peerId} left the room`, "warning");
       Chat.addSystemMessage(`Peer ${msg.peerId} left.`);
       WebRTCMesh.removePeer(msg.peerId);
+      delete sharedSecrets[msg.peerId];
       updatePeerIndicators();
+      updateEncryptionBadge();
     });
 
     Signaling.on("error", (msg) => {
@@ -192,11 +285,11 @@
     UI.showStatus("landing-status", "Connecting to server...", "info");
 
     try {
-      if (window.VoiceChat) await VoiceChat.init();
       await Signaling.connect(serverUrl);
       Signaling.createRoom();
     } catch (err) {
-      UI.showStatus("landing-status", err.message, "error");
+      const errMsg = err.message || (typeof err === "string" ? err : "Connection failed");
+      UI.showStatus("landing-status", errMsg, "error");
       setState("disconnected");
       enableLandingButtons(true);
     }
@@ -228,11 +321,11 @@
     UI.showStatus("landing-status", "Connecting to server...", "info");
 
     try {
-      if (window.VoiceChat) await VoiceChat.init();
       await Signaling.connect(serverUrl);
       Signaling.joinRoom(code);
     } catch (err) {
-      UI.showStatus("landing-status", err.message, "error");
+      const errMsg = err.message || (typeof err === "string" ? err : "Connection failed");
+      UI.showStatus("landing-status", errMsg, "error");
       setState("disconnected");
       enableLandingButtons(true);
     }
@@ -241,6 +334,8 @@
   function leaveRoom() {
     WebRTCMesh.disconnectAll();
     Signaling.disconnect();
+    sharedSecrets = {};
+    updateEncryptionBadge();
     setState("disconnected");
     roomCode = null;
     myPeerId = null;
@@ -249,20 +344,24 @@
     enableLandingButtons(true);
   }
 
-  function copyRoomCode() {
+  async function copyRoomCode() {
     if (!roomCode) return;
-    navigator.clipboard.writeText(roomCode).then(() => {
-      UI.toast("Room code copied!", "success");
-    }).catch(() => {
-      // Fallback
-      const input = document.createElement("input");
-      input.value = roomCode;
-      document.body.appendChild(input);
-      input.select();
-      document.execCommand("copy");
-      input.remove();
-      UI.toast("Room code copied!", "success");
-    });
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(roomCode);
+      } else {
+        // Fallback
+        const input = document.createElement("input");
+        input.value = roomCode;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        input.remove();
+      }
+      UI.toast(`Room code ${roomCode} copied to clipboard!`, "info");
+    } catch (err) {
+      console.warn("Clipboard auto-copy failed", err);
+    }
   }
 
   // ── View management ──
@@ -271,6 +370,7 @@
     appView.classList.add("active");
     displayRoomCode.textContent = roomCode;
     updatePeerIndicators();
+    updateEncryptionBadge();
     setState("in-room");
   }
 
@@ -278,8 +378,6 @@
     appView.classList.remove("active");
     landingView.classList.add("active");
   }
-
-  // ── (Old Tab management removed) ──
 
   // ── Peer indicators ──
   function updatePeerIndicators() {
@@ -319,7 +417,22 @@
       if (dot) {
         dot.classList.add("connected");
         if (peerId === 2) dot.classList.add("third-wheeler");
-        dot.innerHTML = `${getIcon(peerId)}<span class="peer-label">${getName(peerId, false)}</span>`;
+        
+        let latencyHtml = "";
+        if (window.Network) {
+          const lat = window.Network.getLatency(peerId);
+          if (lat !== null) {
+            const quality = lat < 100 ? "excellent" : (lat < 300 ? "fair" : "poor");
+            latencyHtml = `
+              <div class="network-badge" title="Round-Trip Ping">
+                <span class="network-dot ${quality}"></span>
+                <span>${lat}ms</span>
+              </div>
+            `;
+          }
+        }
+        
+        dot.innerHTML = `${getIcon(peerId)}${latencyHtml}<span class="peer-label">${getName(peerId, false)}</span>`;
         dot.title = getName(peerId, false);
       }
     }
@@ -344,5 +457,6 @@
   }
 
   // ── Bootstrap ──
+  window.updatePeerIndicators = updatePeerIndicators;
   init();
 })();

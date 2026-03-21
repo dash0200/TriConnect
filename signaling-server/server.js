@@ -67,10 +67,11 @@ wss.on("connection", (ws) => {
         let roomCode = generateRoomCode();
         while (rooms.has(roomCode)) roomCode = generateRoomCode();
 
+        rooms.set(roomCode, { peers: new Map() });
+        const room = rooms.get(roomCode);
+        
         const peerId = 0;
-        const room = { peers: new Map(), nextId: 1 };
         room.peers.set(peerId, ws);
-        rooms.set(roomCode, room);
 
         ws.roomCode = roomCode;
         ws.peerId = peerId;
@@ -95,10 +96,14 @@ wss.on("connection", (ws) => {
 
         if (room.peers.size >= 3) {
           sendTo(ws, { type: "error", message: "Room is full (max 3 users)" });
-          return;
+          break;
         }
 
-        const peerId = room.nextId++;
+        let peerId = 0;
+        while (room.peers.has(peerId)) {
+          peerId++;
+        }
+        
         room.peers.set(peerId, ws);
 
         ws.roomCode = roomCode;

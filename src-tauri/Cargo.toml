@@ -12,8 +12,31 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
-tokio = { version = "1", features = ["fs", "io-util"] }
+tokio = { version = "1", features = ["full"] }
+
+# New Tier 3 Dependencies
+webrtc = "0.12.0"
+tokio-tungstenite = { version = "0.21.0", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3.30"
+url = "2.5.0"
+bytes = "1"
+
+# Hashing (replaces sha2 with faster blake3)
+blake3 = "1"
+
+# Encryption
+chacha20poly1305 = "0.10"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+rand = "0.8"
+base64 = "0.22"
+
+# Compression
+zstd = "0.13"
+
+# Tauri plugins
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-clipboard-manager = "2"

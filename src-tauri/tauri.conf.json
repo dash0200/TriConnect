@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com https://s.ytimg.com; frame-src https://www.youtube.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' ws: wss: https://www.youtube.com; img-src 'self' https://i.ytimg.com https://img.youtube.com data:"
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' tauri: ipc: http://ipc.localhost blob: data: https: wss: ws:;"
     }
   },
   "bundle": {

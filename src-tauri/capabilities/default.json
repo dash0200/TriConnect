@@ -1,0 +1,10 @@
+{
+  "identifier": "default",
+  "description": "Default permissions for TriConnect",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "notification:default"
+  ]
+}

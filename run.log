@@ -1,0 +1,30 @@
+
+[0;36m╔══════════════════════════════════════════════╗[0m
+[0;36m║         TriConnect — Local Development       ║[0m
+[0;36m╚══════════════════════════════════════════════╝[0m
+
+[0;36m[TriConnect][0m Starting signaling server on port 8080...
+TriConnect signaling server running on port 8080
+[0;32m  ✅ Signaling server running (PID: 53092, ws://localhost:8080)[0m
+[0;36m[TriConnect][0m Starting static file server on port 1420...
+[0;36m[TriConnect][0m Starting Tauri app in development mode...
+[0;36m[TriConnect][0m (First run will compile Rust — this takes a few minutes)
+
+[0;32m  ✅ Tauri dev started (PID: 53104)[0m
+
+[0;32m══════════════════════════════════════════════[0m
+[0;32m  TriConnect is starting![0m
+[0;32m  • Signaling server: ws://localhost:8080[0m
+[0;32m  • App window will open shortly...[0m
+[0;32m  • Press Ctrl+C to stop everything[0m
+[0;32m══════════════════════════════════════════════[0m
+
+     Running DevCommand (`cargo  run --no-default-features --color always --`)
+        Info Watching /home/dash/Documents/TriConnect/src-tauri for changes...
+[1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`dev` profile [unoptimized + debuginfo]]8;;\ target(s) in 0.24s
+[1m[92m     Running[0m `target/debug/triconnect`
+        Info File src-tauri/tauri.conf.json changed. Rebuilding application...
+     Running DevCommand (`cargo  run --no-default-features --color always --`)
+[1m[92m   Compiling[0m triconnect v1.0.0 (/home/dash/Documents/TriConnect/src-tauri)
+[1m[96m    Building[0m [=======================> ] 551/554: triconnect(build)           [1m[96m    Building[0m [=======================> ] 552/554: triconnect                  [1m[96m    Building[0m [=======================> ] 553/554: triconnect(bin)             [K[1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`dev` profile [unoptimized + debuginfo]]8;;\ target(s) in 3.91s
+[1m[92m     Running[0m `target/debug/triconnect`
