@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' tauri: ipc: http://ipc.localhost blob: data: https: wss: ws:;"
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' tauri: ipc: http://ipc.localhost blob: data: https: wss: ws:; frame-src https://www.youtube.com https://www.youtube-nocookie.com; media-src https: blob: data: 'self';"
     }
   },
   "bundle": {
